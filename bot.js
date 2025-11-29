@@ -284,7 +284,7 @@ app.post('/api/download-reel', async (req, res) => {
 client.once('ready', () => {
     console.log('✅ videoWiper Bot is online!');
     console.log(`🤖 Logged in as ${client.user.tag}`);
-    console.log(`🌐 Web interface running on http://localhost:${PORT}`);
+    console.log(`🌐 Web interface running on ${process.env.API_DOMAIN || 'http://localhost:'}${PORT}`);
     
     client.user.setActivity('Managing uploads', { type: 3 });
 });

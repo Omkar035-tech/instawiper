@@ -1,6 +1,6 @@
 const http = require('http');
 const data = JSON.stringify({ urls: ['https://www.instagram.com/reel/DQMWGqYjHXJ'], message: 'Sample video' });
-const req = http.request({ hostname: 'localhost', port: 3000, path: '/api/post-instagram', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, res => {
+const req = http.request({ hostname: `${process.env.API_DOMAIN || 'localhost'}`, port: 3000, path: '/api/post-instagram', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, res => {
   res.setEncoding('utf8');
   let body = '';
   res.on('data', d => body += d);
