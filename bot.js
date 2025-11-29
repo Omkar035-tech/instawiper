@@ -1,12 +1,10 @@
-// videoWiper Discord Bot - Main Bot Script
-// Install dependencies: npm install discord.js express multer dotenv
-
 require('dotenv').config();
-const { Client, GatewayIntentBits, AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, AttachmentBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 
 // Discord Bot Setup
 const client = new Client({
@@ -70,7 +68,6 @@ app.get('/api/guilds', async (req, res) => {
             name: guild.name,
             icon: guild.iconURL()
         }));
-        console.log('Fetched guilds:', guilds);
         res.json(guilds);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -157,8 +154,130 @@ app.post('/api/upload', upload.array('files', 10), async (req, res) => {
     }
 });
 
-client.on('guildCreate', guild => {
-    console.log(`✅ Bot joined server: ${guild.name} (${guild.id})`);
+// Instagram Reels Download API
+app.post('/api/download-reel', async (req, res) => {
+    try {
+        const { url, message } = req.body;
+
+        if (!channelConfig.channelId) {
+            return res.status(400).json({ error: 'Channel not configured' });
+        }
+
+        if (!url) {
+            return res.status(400).json({ error: 'Instagram URL is required' });
+        }
+
+        const channel = client.channels.cache.get(channelConfig.channelId);
+        if (!channel) {
+            return res.status(404).json({ error: 'Channel not found' });
+        }
+
+        // Extract Instagram shortcode from URL
+        const shortcodeMatch = url.match(/(?:reel|p)\/([A-Za-z0-9_-]+)/);
+        if (!shortcodeMatch) {
+            return res.status(400).json({ error: 'Invalid Instagram URL' });
+        }
+
+        const shortcode = shortcodeMatch[1];
+
+        // Fetch Instagram data using RapidAPI Instagram Reels Downloader
+        const encodedUrl = encodeURIComponent(url);
+        const apiUrl = `https://instagram-reels-downloader-api.p.rapidapi.com/download?url=${encodedUrl}`;
+        
+        const options = {
+            method: 'GET',
+            url: apiUrl,
+            headers: {
+                'x-rapidapi-key': process.env.RAPIDAPI_KEY || 'YOUR_RAPIDAPI_KEY',
+                'x-rapidapi-host': 'instagram-reels-downloader-api.p.rapidapi.com'
+            }
+        };
+
+        console.log('📥 Fetching Instagram Reel data...');
+        const response = await axios.request(options);
+        const data = response.data;
+
+        console.log('Instagram API Response:', data);
+
+        if (!data || !data.download_url) {
+            return res.status(404).json({ 
+                error: 'Could not fetch Instagram media',
+                details: data
+            });
+        }
+
+        // Download the video
+        const videoUrl = data.download_url;
+        console.log('📹 Downloading video from:', videoUrl);
+        
+        const videoResponse = await axios({
+            method: 'GET',
+            url: videoUrl,
+            responseType: 'stream'
+        });
+
+        // Save temporarily
+        const filename = `reel_${shortcode}_${Date.now()}.mp4`;
+        const filepath = path.join('./uploads', filename);
+        
+        if (!fs.existsSync('./uploads')) {
+            fs.mkdirSync('./uploads');
+        }
+        
+        const writer = fs.createWriteStream(filepath);
+        videoResponse.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        console.log('✅ Video downloaded successfully');
+
+        // Get video info
+        const title = data.title || data.caption || 'Instagram Reel';
+        const username = data.owner?.username || data.username || 'Unknown';
+        const likes = data.like_count || data.likes || 'N/A';
+        const views = data.view_count || data.views || 'N/A';
+
+        // Upload to Discord
+        const attachment = new AttachmentBuilder(filepath, { name: filename });
+        
+        const embedMessage = message || 
+            `🎬 **Instagram Reel Downloaded**\n` +
+            `📝 **Title:** ${title}\n` +
+            `👤 **Author:** @${username}\n` +
+            `❤️ **Likes:** ${likes}\n` +
+            `👁️ **Views:** ${views}\n` +
+            `🔗 **Source:** ${url}`;
+
+        await channel.send({
+            content: embedMessage,
+            files: [attachment]
+        });
+
+        // Delete temporary file
+        fs.unlinkSync(filepath);
+
+        res.json({
+            success: true,
+            reel: {
+                title,
+                username,
+                likes,
+                views,
+                url
+            },
+            channel: channel.name
+        });
+
+    } catch (error) {
+        console.error('Instagram download error:', error);
+        res.status(500).json({ 
+            error: error.message || 'Failed to download Instagram reel',
+            details: 'Make sure you have a valid RapidAPI key configured'
+        });
+    }
 });
 
 // Discord Bot Events
@@ -166,12 +285,6 @@ client.once('ready', () => {
     console.log('✅ videoWiper Bot is online!');
     console.log(`🤖 Logged in as ${client.user.tag}`);
     console.log(`🌐 Web interface running on http://localhost:${PORT}`);
-
-     // DEBUG: Show all servers
-    console.log(`📊 Connected to ${client.guilds.cache.size} server(s):`);
-    client.guilds.cache.forEach(guild => {
-        console.log(`   - ${guild.name} (${guild.id})`);
-    });
     
     client.user.setActivity('Managing uploads', { type: 3 });
 });
@@ -185,12 +298,130 @@ app.listen(PORT, () => {
     console.log(`🚀 videoWiper server started on port ${PORT}`);
 });
 
-// Login to Discord
-client.login(process.env.DISCORD_TOKEN);
+// Login to Discord (guarded so server can run without a token set)
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+if (DISCORD_TOKEN && DISCORD_TOKEN !== 'your_bot_token_here') {
+    client.login(DISCORD_TOKEN).catch(err => console.error('Discord login failed:', err));
+} else {
+    console.warn('⚠️ DISCORD_TOKEN not set or placeholder detected. Discord client will not log in. Set DISCORD_TOKEN in .env to enable bot functionality.');
+}
 
 // Graceful shutdown
 process.on('SIGINT', () => {
     console.log('\n👋 Shutting down videoWiper...');
     client.destroy();
     process.exit(0);
+});
+
+// Convert Instagram URLs/shortcodes and post masked links to Discord channel
+app.post('/api/post-instagram', express.json(), async (req, res) => {
+    try {
+        const { urls, message, embedOnly } = req.body || {};
+        const channelId = (req.body && req.body.channelId) || channelConfig.channelId;
+
+        if (!channelId) return res.status(400).json({ success: false, error: 'Channel not configured' });
+
+        const channel = client.channels.cache.get(channelId);
+        if (!channel) return res.status(404).json({ success: false, error: 'Channel not found' });
+
+        if (!urls || !Array.isArray(urls) || urls.length === 0) {
+            return res.status(400).json({ success: false, error: 'No URLs provided' });
+        }
+
+        // Use the existing test runner script to resolve media URLs.
+        // It prints JSON prefixed with "RESULT: ". We'll run it via node for each shortcode.
+        const { execFile } = require('child_process');
+        const runInstaScript = (shortcode) => new Promise((resolve, reject) => {
+            // Run the script from the project directory using a relative script path so ESM loader resolves relative imports correctly on Windows.
+            const relScriptPath = path.join('scripts', 'test-insta-run.mjs');
+            execFile(process.execPath, [relScriptPath, shortcode], { windowsHide: true, maxBuffer: 1024 * 1024 * 5, cwd: __dirname }, (err, stdout, stderr) => {
+                if (err) return reject({ err, stdout, stderr });
+                // script prints: RESULT: {...}\n
+                const out = String(stdout || '').trim();
+                const marker = 'RESULT:';
+                const idx = out.indexOf(marker);
+                if (idx === -1) {
+                    return reject(new Error('Unexpected script output: ' + out + ' ' + String(stderr || '')));
+                }
+                const jsonPart = out.slice(idx + marker.length).trim();
+                try {
+                    const parsed = JSON.parse(jsonPart);
+                    resolve(parsed);
+                } catch (e) {
+                    return reject(new Error('Failed to parse JSON from script output: ' + e.message + ' -- ' + jsonPart));
+                }
+            });
+        });
+
+        const posted = [];
+
+        for (const rawUrl of urls) {
+            try {
+                if (!rawUrl || typeof rawUrl !== 'string') continue;
+                // try to extract shortcode or shareId
+                let shortcode = null;
+                let shareId = null;
+                try {
+                    const u = new URL(rawUrl);
+                    const parts = u.pathname.split('/').filter(Boolean);
+                    // common forms: /p/{id}/, /reel/{id}/, /share/{id}/
+                    if (parts.length >= 2) {
+                        if (parts[0] === 'p' || parts[0] === 'reel' || parts[0] === 'tv') shortcode = parts[1];
+                        if (parts[0] === 'share') shareId = parts[1];
+                    }
+                } catch (e) {
+                    // not a valid URL; maybe user provided shortcode directly
+                    const s = rawUrl.trim();
+                    if (/^[A-Za-z0-9_-]{5,}$/.test(s)) shortcode = s;
+                }
+
+                let info = null;
+                if (shareId) {
+                    // shareId -> try resolving via script by passing shareId
+                    info = await runInstaScript(shareId).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+                } else if (shortcode) {
+                    info = await runInstaScript(shortcode).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+                } else {
+                    // try to resolve by attempting to extract shortcode via redirect resolution
+                    const resolved = await resolveRedirectingURL(rawUrl);
+                    const id = resolved.postId || resolved.shareId;
+                    if (id) info = await runInstaScript(id).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+                    else info = { error: 'could not-resolve-id' };
+                }
+
+                // extract a usable media URL
+                let mediaUrl = null;
+                let isPhoto = false;
+                if (info?.urls) mediaUrl = info.urls;
+                else if (info?.picker && Array.isArray(info.picker) && info.picker.length) mediaUrl = info.picker[0].url;
+                else if (info?.isPhoto && info?.urls) { mediaUrl = info.urls; isPhoto = true; }
+
+                if (!mediaUrl) {
+                    // skip if no media
+                    posted.push({ input: rawUrl, ok: false, error: info?.error || 'no_media' });
+                    continue;
+                }
+
+                // create a masked embed with a friendly title
+                const title = message && typeof message === 'string' && message.length ? message : `Instagram ${shortcode || shareId || 'media'}`;
+                const embed = new EmbedBuilder()
+                    .setTitle(title)
+                    .setDescription(`[${title}](${mediaUrl})`)
+                    .setURL(mediaUrl)
+                    .setTimestamp();
+
+                if (isPhoto) embed.setImage(mediaUrl);
+
+                await channel.send({ content: message && message.length ? message : undefined, embeds: [embed] });
+                posted.push({ input: rawUrl, ok: true, url: mediaUrl });
+            } catch (e) {
+                posted.push({ input: rawUrl, ok: false, error: e && e.message ? e.message : String(e) });
+            }
+        }
+
+        res.json({ success: true, posted });
+    } catch (error) {
+        console.error('Error in /api/post-instagram:', error);
+        res.status(500).json({ success: false, error: error && error.message ? error.message : String(error) });
+    }
 });

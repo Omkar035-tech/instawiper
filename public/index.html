@@ -273,6 +273,103 @@
             font-size: 0.85em;
             margin-left: 10px;
         }
+
+        .instagram-info {
+            background: linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .instagram-info p {
+            margin: 0;
+            font-weight: 500;
+        }
+
+        .url-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .url-input:focus {
+            outline: none;
+            border-color: #e1306c;
+            box-shadow: 0 0 0 3px rgba(225, 48, 108, 0.1);
+        }
+
+        .instagram-btn {
+            background: linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+        }
+
+        .instagram-btn:hover:not(:disabled) {
+            box-shadow: 0 5px 20px rgba(225, 48, 108, 0.4);
+        }
+
+        .mode-toggle {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .mode-option {
+            cursor: pointer;
+        }
+
+        .mode-option input[type="radio"] {
+            display: none;
+        }
+
+        .mode-label {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            transition: all 0.3s;
+            background: white;
+        }
+
+        .mode-option input[type="radio"]:checked + .mode-label {
+            border-color: #5865F2;
+            background: #f8f9ff;
+            box-shadow: 0 2px 8px rgba(88, 101, 242, 0.15);
+        }
+
+        .mode-label:hover {
+            border-color: #5865F2;
+            background: #f8f9ff;
+        }
+
+        .mode-icon {
+            font-size: 2em;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .mode-text {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .mode-text strong {
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+
+        .mode-text small {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 <body>
@@ -317,6 +414,14 @@
                 </div>
 
                 <div class="form-group">
+                    <label>Select Mode</label>
+                    <div style="display:flex;gap:12px;">
+                        <label style="display:flex;align-items:center;gap:8px;"><input type="radio" name="mainMode" value="discord" checked> Discord (Upload files)</label>
+                        <label style="display:flex;align-items:center;gap:8px;"><input type="radio" name="mainMode" value="instagram"> Instagram -> Discord</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
                     <label for="messageInput">Message (Optional)</label>
                     <textarea id="messageInput" rows="3" placeholder="Add a message with your upload..."></textarea>
                 </div>
@@ -342,6 +447,51 @@
 
                 <div class="status" id="status"></div>
             </div>
+
+            <!-- Instagram Reels Section -->
+            <div class="section" id="instagramSection">
+                <div class="section-title">
+                    <span>📸</span>
+                    Instagram -> Discord
+                </div>
+
+                <div class="instagram-info">
+                    <p>🎬 Convert Instagram posts/reels to direct media links and post masked links to Discord.</p>
+                </div>
+
+                <div class="form-group">
+                    <label>Instagram Reel URLs</label>
+                    <div id="instaUrlList">
+                        <div style="display:flex;gap:8px;margin-bottom:8px;">
+                            <input type="text" class="url-input insta-url-input" placeholder="https://www.instagram.com/reel/ABC123...">
+                            <button type="button" class="remove-btn" style="padding:8px 10px;">Remove</button>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;display:flex;gap:8px;">
+                        <button id="addInstaUrlBtn" class="upload-btn instagram-btn" style="padding:10px 16px;display:inline-block;width:auto;">Add another</button>
+                        <div style="flex:1"></div>
+                    </div>
+                </div>
+
+                <!-- Download Mode options removed: Instagram URLs will be converted automatically using server-side script -->
+
+                <div class="form-group">
+                    <label for="instaMessage">Custom Message (Optional)</label>
+                    <textarea id="instaMessage" rows="2" placeholder="Add a custom message (leave empty for auto-generated)"></textarea>
+                </div>
+
+                <button class="upload-btn instagram-btn" id="downloadReelBtn" disabled>
+                    <span id="reelBtnIcon">⬇️</span>
+                    <span id="reelBtnText">Post to Discord</span>
+                </button>
+
+                <div class="loading" id="instaLoading">
+                    <div class="spinner"></div>
+                    <p id="instaLoadingText">Processing Instagram URLs...</p>
+                </div>
+
+                <div class="status" id="instaStatus"></div>
+            </div>
         </div>
     </div>
 
@@ -354,7 +504,7 @@
             try {
                 const response = await fetch('/api/guilds');
                 const guilds = await response.json();
-                console.log(guilds);
+                
                 const guildSelect = document.getElementById('guildSelect');
                 guildSelect.innerHTML = '<option value="">Select a server</option>';
                 
@@ -424,6 +574,8 @@
                 badge.style.display = 'inline-block';
                 
                 updateUploadButton();
+                // ensure instagram post button state also updates when channel is configured
+                try { updateInstaButtonState(); } catch (e) { /* ignore if not yet defined */ }
                 showStatus('Channel configured successfully!', 'success');
             } catch (error) {
                 showStatus('Failed to save configuration: ' + error.message, 'error');
@@ -445,7 +597,6 @@
                     
                     setTimeout(() => {
                         document.getElementById('channelSelect').value = config.channelId;
-                        console.log('Set channel to', config.channelId);
                         const channelName = document.getElementById('channelSelect').options[document.getElementById('channelSelect').selectedIndex].text;
                         const badge = document.getElementById('channelBadge');
                         badge.textContent = channelName;
@@ -580,6 +731,127 @@
                 status.style.display = 'none';
             }, 5000);
         }
+
+        function showInstaStatus(message, type) {
+            const status = document.getElementById('instaStatus');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            
+            setTimeout(() => {
+                status.className = 'status';
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        // Instagram -> Discord Functionality (multi-url)
+        const downloadReelBtn = document.getElementById('downloadReelBtn');
+        const mainModeRadios = document.querySelectorAll('input[name="mainMode"]');
+        const instaUrlList = document.getElementById('instaUrlList');
+        // Download mode removed; always post masked links. Keep static button text/icon.
+
+        // Toggle view between upload and instagram mode
+        function updateMainMode() {
+            const mode = document.querySelector('input[name="mainMode"]:checked').value;
+            // the upload section is the second .section (index 1), instagram is the third (index 2)
+            const sections = document.querySelectorAll('.section');
+            if (sections && sections.length >= 3) {
+                if (mode === 'instagram') {
+                    sections[1].style.display = 'none';
+                    sections[2].style.display = '';
+                } else {
+                    sections[1].style.display = '';
+                    sections[2].style.display = 'none';
+                }
+            }
+            updateInstaButtonState();
+        }
+        mainModeRadios.forEach(r => r.addEventListener('change', updateMainMode));
+
+        // Insta URL list helpers
+        function addInstaUrlInput(value = '') {
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'flex';
+            wrapper.style.gap = '8px';
+            wrapper.style.marginBottom = '8px';
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'url-input insta-url-input';
+            input.placeholder = 'https://www.instagram.com/reel/ABC123...';
+            input.value = value;
+            input.addEventListener('input', updateInstaButtonState);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'remove-btn';
+            removeBtn.textContent = 'Remove';
+            removeBtn.addEventListener('click', () => { wrapper.remove(); updateInstaButtonState(); });
+
+            wrapper.appendChild(input);
+            wrapper.appendChild(removeBtn);
+            instaUrlList.appendChild(wrapper);
+        }
+
+        document.getElementById('addInstaUrlBtn').addEventListener('click', (e) => { e.preventDefault(); addInstaUrlInput(''); });
+
+        function collectInstaUrls() {
+            return Array.from(document.querySelectorAll('.insta-url-input')).map(i => i.value.trim()).filter(Boolean);
+        }
+
+        function updateInstaButtonState() {
+            const hasUrls = collectInstaUrls().length > 0;
+            const hasChannel = currentConfig.channelId;
+            downloadReelBtn.disabled = !(hasUrls && hasChannel);
+        }
+
+        // initialize one input
+        instaUrlList.innerHTML = '';
+        addInstaUrlInput('');
+        updateMainMode();
+
+        // Post Instagram URLs (converted) to Discord
+        downloadReelBtn.addEventListener('click', async () => {
+            const urls = collectInstaUrls();
+            const customMessage = document.getElementById('instaMessage').value.trim();
+
+            if (!currentConfig.channelId) {
+                showInstaStatus('Please configure a server and channel first (top of page).', 'error');
+                return;
+            }
+
+            if (!urls.length) { showInstaStatus('Please add at least one Instagram URL', 'error'); return; }
+
+            const invalid = urls.find(u => !(u.includes('instagram.com') || /^[A-Za-z0-9_-]{5,}$/.test(u)));
+            if (invalid) { showInstaStatus('One or more URLs look invalid: ' + invalid, 'error'); return; }
+
+            document.getElementById('instaLoading').classList.add('active');
+            downloadReelBtn.disabled = true;
+
+            try {
+                // debug: log payload
+                console.log('Posting Instagram urls', urls, 'to channel', currentConfig.channelId);
+                const response = await fetch('/api/post-instagram', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls, message: customMessage || null, channelId: currentConfig.channelId })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showInstaStatus(`✅ Posted ${result.posted.filter(p=>p.ok).length}/${result.posted.length} items`, 'success');
+                    document.querySelectorAll('.insta-url-input').forEach(i=>i.value='');
+                    document.getElementById('instaMessage').value = '';
+                } else {
+                    showInstaStatus('❌ ' + (result.error || 'Failed to process'), 'error');
+                }
+            } catch (error) {
+                console.error('Error posting Instagram urls:', error);
+                showInstaStatus('❌ Error: ' + (error && error.message ? error.message : error), 'error');
+            } finally {
+                document.getElementById('instaLoading').classList.remove('active');
+                setTimeout(() => { downloadReelBtn.disabled = false; }, 2000);
+            }
+        });
 
         // Initialize
         loadGuilds();
