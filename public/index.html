@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>videoWiper - Discord Media Uploader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #5865F2 0%, #7289DA 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 1.3em;
+            color: #5865F2;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        select:focus, textarea:focus {
+            outline: none;
+            border-color: #5865F2;
+            box-shadow: 0 0 0 3px rgba(88, 101, 242, 0.1);
+        }
+
+        .upload-zone {
+            border: 3px dashed #5865F2;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+        }
+
+        .upload-zone:hover {
+            background: #f0f2ff;
+            border-color: #4752c4;
+        }
+
+        .upload-zone.dragover {
+            background: #e8ebff;
+            border-color: #3c45a5;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            font-size: 1.2em;
+            color: #5865F2;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .upload-hint {
+            color: #7289DA;
+            font-size: 0.95em;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .file-list {
+            margin-top: 20px;
+        }
+
+        .file-item {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #e0e0e0;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .file-icon {
+            font-size: 1.5em;
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .file-size {
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+
+        .remove-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+
+        .remove-btn:hover {
+            background: #c0392b;
+        }
+
+        .upload-btn {
+            background: linear-gradient(135deg, #5865F2 0%, #7289DA 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .upload-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(88, 101, 242, 0.4);
+        }
+
+        .upload-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #5865F2;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .config-badge {
+            display: inline-block;
+            background: #5865F2;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span>🎬</span>
+                videoWiper
+            </h1>
+            <p>Upload videos & images directly to Discord</p>
+        </div>
+
+        <div class="content">
+            <!-- Configuration Section -->
+            <div class="section">
+                <div class="section-title">
+                    <span>⚙️</span>
+                    Configuration
+                </div>
+                
+                <div class="form-group">
+                    <label for="guildSelect">Select Server</label>
+                    <select id="guildSelect">
+                        <option value="">Loading servers...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="channelSelect">Select Channel</label>
+                    <select id="channelSelect" disabled>
+                        <option value="">Select a server first</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Upload Section -->
+            <div class="section">
+                <div class="section-title">
+                    <span>📤</span>
+                    Upload Files
+                    <span class="config-badge" id="channelBadge" style="display: none;"></span>
+                </div>
+
+                <div class="form-group">
+                    <label for="messageInput">Message (Optional)</label>
+                    <textarea id="messageInput" rows="3" placeholder="Add a message with your upload..."></textarea>
+                </div>
+
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">Click to select files or drag & drop</div>
+                    <div class="upload-hint">Supports all video and image formats • Max 25MB per file</div>
+                    <input type="file" id="fileInput" multiple accept="video/*,image/*">
+                </div>
+
+                <div class="file-list" id="fileList"></div>
+
+                <button class="upload-btn" id="uploadBtn" disabled>
+                    <span>🚀</span>
+                    Upload to Discord
+                </button>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Uploading files to Discord...</p>
+                </div>
+
+                <div class="status" id="status"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFiles = [];
+        let currentConfig = { guildId: '', channelId: '' };
+
+        // Load guilds on page load
+        async function loadGuilds() {
+            try {
+                const response = await fetch('/api/guilds');
+                const guilds = await response.json();
+                console.log(guilds);
+                const guildSelect = document.getElementById('guildSelect');
+                guildSelect.innerHTML = '<option value="">Select a server</option>';
+                
+                guilds.forEach(guild => {
+                    const option = document.createElement('option');
+                    option.value = guild.id;
+                    option.textContent = guild.name;
+                    guildSelect.appendChild(option);
+                });
+
+                // Load saved config
+                loadConfig();
+            } catch (error) {
+                showStatus('Failed to load servers: ' + error.message, 'error');
+            }
+        }
+
+        // Load channels when guild is selected
+        document.getElementById('guildSelect').addEventListener('change', async (e) => {
+            const guildId = e.target.value;
+            const channelSelect = document.getElementById('channelSelect');
+            
+            if (!guildId) {
+                channelSelect.disabled = true;
+                channelSelect.innerHTML = '<option value="">Select a server first</option>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/channels/${guildId}`);
+                const channels = await response.json();
+                
+                channelSelect.disabled = false;
+                channelSelect.innerHTML = '<option value="">Select a channel</option>';
+                
+                channels.forEach(channel => {
+                    const option = document.createElement('option');
+                    option.value = channel.id;
+                    option.textContent = `# ${channel.name}`;
+                    channelSelect.appendChild(option);
+                });
+            } catch (error) {
+                showStatus('Failed to load channels: ' + error.message, 'error');
+            }
+        });
+
+        // Save channel configuration
+        document.getElementById('channelSelect').addEventListener('change', async (e) => {
+            const guildId = document.getElementById('guildSelect').value;
+            const channelId = e.target.value;
+
+            if (!channelId) return;
+
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ guildId, channelId })
+                });
+
+                const result = await response.json();
+                currentConfig = result.config;
+                
+                const channelName = e.target.options[e.target.selectedIndex].text;
+                const badge = document.getElementById('channelBadge');
+                badge.textContent = channelName;
+                badge.style.display = 'inline-block';
+                
+                updateUploadButton();
+                showStatus('Channel configured successfully!', 'success');
+            } catch (error) {
+                showStatus('Failed to save configuration: ' + error.message, 'error');
+            }
+        });
+
+        // Load saved config
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                
+                if (config.guildId && config.channelId) {
+                    currentConfig = config;
+                    document.getElementById('guildSelect').value = config.guildId;
+                    
+                    const changeEvent = new Event('change');
+                    document.getElementById('guildSelect').dispatchEvent(changeEvent);
+                    
+                    setTimeout(() => {
+                        document.getElementById('channelSelect').value = config.channelId;
+                        console.log('Set channel to', config.channelId);
+                        const channelName = document.getElementById('channelSelect').options[document.getElementById('channelSelect').selectedIndex].text;
+                        const badge = document.getElementById('channelBadge');
+                        badge.textContent = channelName;
+                        badge.style.display = 'inline-block';
+                    }, 500);
+                }
+            } catch (error) {
+                console.error('Failed to load config:', error);
+            }
+        }
+
+        // File upload handling
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadZone.addEventListener('click', () => fileInput.click());
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            for (let file of files) {
+                if (file.size > 25 * 1024 * 1024) {
+                    showStatus(`File "${file.name}" is too large (max 25MB)`, 'error');
+                    continue;
+                }
+                selectedFiles.push(file);
+            }
+            renderFileList();
+            updateUploadButton();
+        }
+
+        function renderFileList() {
+            const fileList = document.getElementById('fileList');
+            fileList.innerHTML = '';
+
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                
+                const isVideo = file.type.startsWith('video/');
+                const icon = isVideo ? '🎥' : '🖼️';
+                const size = (file.size / 1024 / 1024).toFixed(2) + ' MB';
+
+                fileItem.innerHTML = `
+                    <div class="file-info">
+                        <div class="file-icon">${icon}</div>
+                        <div class="file-details">
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-size">${size}</div>
+                        </div>
+                    </div>
+                    <button class="remove-btn" onclick="removeFile(${index})">✕ Remove</button>
+                `;
+
+                fileList.appendChild(fileItem);
+            });
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            renderFileList();
+            updateUploadButton();
+        }
+
+        function updateUploadButton() {
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.disabled = selectedFiles.length === 0 || !currentConfig.channelId;
+        }
+
+        // Upload files
+        document.getElementById('uploadBtn').addEventListener('click', async () => {
+            if (selectedFiles.length === 0 || !currentConfig.channelId) return;
+
+            const formData = new FormData();
+            selectedFiles.forEach(file => formData.append('files', file));
+            
+            const message = document.getElementById('messageInput').value;
+            if (message) formData.append('message', message);
+
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('uploadBtn').disabled = true;
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showStatus(`✅ Successfully uploaded ${result.files.length} file(s) to #${result.channel}!`, 'success');
+                    selectedFiles = [];
+                    renderFileList();
+                    document.getElementById('messageInput').value = '';
+                    fileInput.value = '';
+                } else {
+                    showStatus('❌ Upload failed: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('❌ Upload failed: ' + error.message, 'error');
+            } finally {
+                document.getElementById('loading').classList.remove('active');
+                updateUploadButton();
+            }
+        });
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            
+            setTimeout(() => {
+                status.className = 'status';
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        // Initialize
+        loadGuilds();
+    </script>
+</body>
+</html>
