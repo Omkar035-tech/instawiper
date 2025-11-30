@@ -448,6 +448,18 @@ export default function instagram(obj) {
         if (!hasData(data)) {
             return getErrorContext(id);
         }
+                // Log creator name and title
+        if (data) {
+            console.log('Creator Name:', data);
+            console.log('Creator Full Name:', data.user.full_name);
+        }
+        if (data?.caption) {
+            console.log('Title/Caption:', data.caption);
+        } else if (data?.gql_data?.xdt_shortcode_media?.edge_media_to_caption?.edges?.[0]?.node?.text) {
+            console.log('Title/Caption:', data.gql_data.xdt_shortcode_media.edge_media_to_caption.edges[0].node.text);
+        } else if (data?.gql_data?.shortcode_media?.edge_media_to_caption?.edges?.[0]?.node?.text) {
+            console.log('Title/Caption:', data.gql_data.shortcode_media.edge_media_to_caption.edges[0].node.text);
+        }
 
         if (data?.gql_data) {
             result = extractOldPost(data, id, alwaysProxy)

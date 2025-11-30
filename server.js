@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, AttachmentBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const express = require('express');
 const multer = require('multer');
+const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
@@ -16,7 +17,20 @@ const client = new Client({
 
 // Express Server Setup
 const app = express();
+app.use(cors());
 const PORT = process.env.PORT || 3000;
+
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(200);
+    }
+
+    next();
+});
 
 // Configure Multer for file uploads
 const storage = multer.diskStorage({
@@ -314,6 +328,432 @@ process.on('SIGINT', () => {
 });
 
 // Convert Instagram URLs/shortcodes and post masked links to Discord channel
+// app.post('/api/post-instagram', express.json(), async (req, res) => {
+//     try {
+//         const { urls, message, embedOnly } = req.body || {};
+//         const channelId = (req.body && req.body.channelId) || channelConfig.channelId;
+
+//         if (!channelId) return res.status(400).json({ success: false, error: 'Channel not configured' });
+
+//         const channel = client.channels.cache.get(channelId);
+//         if (!channel) return res.status(404).json({ success: false, error: 'Channel not found' });
+
+//         if (!urls || !Array.isArray(urls) || urls.length === 0) {
+//             return res.status(400).json({ success: false, error: 'No URLs provided' });
+//         }
+
+//         // Use the existing test runner script to resolve media URLs.
+//         const { execFile } = require('child_process');
+//         const runInstaScript = (shortcode) => new Promise((resolve, reject) => {
+//             const relScriptPath = path.join('scripts', 'test-insta-run.mjs');
+//             execFile(process.execPath, [relScriptPath, shortcode], { 
+//                 windowsHide: true, 
+//                 maxBuffer: 1024 * 1024 * 5, 
+//                 cwd: __dirname 
+//             }, (err, stdout, stderr) => {
+//                 if (err) return reject({ err, stdout, stderr });
+//                 const out = String(stdout || '').trim();
+//                 const marker = 'RESULT:';
+//                 const idx = out.indexOf(marker);
+//                 if (idx === -1) {
+//                     return reject(new Error('Unexpected script output: ' + out + ' ' + String(stderr || '')));
+//                 }
+//                 const jsonPart = out.slice(idx + marker.length).trim();
+//                 try {
+//                     const parsed = JSON.parse(jsonPart);
+//                     resolve(parsed);
+//                 } catch (e) {
+//                     return reject(new Error('Failed to parse JSON from script output: ' + e.message + ' -- ' + jsonPart));
+//                 }
+//             });
+//         });
+
+//         const posted = [];
+
+//         for (const rawUrl of urls) {
+//             try {
+//                 if (!rawUrl || typeof rawUrl !== 'string') continue;
+                
+//                 // Extract shortcode or shareId
+//                 let shortcode = null;
+//                 let shareId = null;
+//                 try {
+//                     const u = new URL(rawUrl);
+//                     const parts = u.pathname.split('/').filter(Boolean);
+//                     if (parts.length >= 2) {
+//                         if (parts[0] === 'p' || parts[0] === 'reel' || parts[0] === 'tv') shortcode = parts[1];
+//                         if (parts[0] === 'share') shareId = parts[1];
+//                     }
+//                 } catch (e) {
+//                     const s = rawUrl.trim();
+//                     if (/^[A-Za-z0-9_-]{5,}$/.test(s)) shortcode = s;
+//                 }
+
+//                 let info = null;
+//                 if (shareId) {
+//                     info = await runInstaScript(shareId).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+//                 } else if (shortcode) {
+//                     info = await runInstaScript(shortcode).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+//                 } else {
+//                     const resolved = await resolveRedirectingURL(rawUrl);
+//                     const id = resolved.postId || resolved.shareId;
+//                     if (id) info = await runInstaScript(id).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+//                     else info = { error: 'could not-resolve-id' };
+//                 }
+
+//                 // Handle carousel posts (multiple images/videos)
+//                 if (info?.picker && Array.isArray(info.picker) && info.picker.length > 0) {
+//                     // Post each item from the carousel separately
+//                     for (let i = 0; i < info.picker.length; i++) {
+//                         const item = info.picker[i];
+//                         if (!item || !item.url) continue;
+
+//                         const isPhoto = item.type === 'photo';
+//                         const itemTitle = message && typeof message === 'string' && message.length 
+//                             ? `${message}${info.picker.length > 1 ? ` (${i + 1}/${info.picker.length})` : ''}` 
+//                             : `Instagram ${shortcode || shareId || 'media'}${info.picker.length > 1 ? ` (${i + 1}/${info.picker.length})` : ''}`;
+
+//                         const embed = new EmbedBuilder()
+//                             .setTitle(itemTitle)
+//                             .setURL(`https://www.instagram.com/p/${shortcode || shareId}/`)
+//                             .setTimestamp();
+
+//                         if (isPhoto) {
+//                             embed.setImage(item.url);
+//                         } else {
+//                             // For videos, set thumbnail if available
+//                             if (item.thumb) {
+//                                 embed.setImage(item.thumb);
+//                             }
+//                         }
+
+//                         // For videos, include the video URL in the content
+//                         const content = !isPhoto ? item.url : (i === 0 && message && message.length ? message : undefined);
+
+//                         await channel.send({ 
+//                             content: content, 
+//                             embeds: [embed] 
+//                         });
+
+//                         posted.push({ 
+//                             input: rawUrl, 
+//                             ok: true, 
+//                             url: item.url, 
+//                             type: item.type,
+//                             index: i + 1,
+//                             total: info.picker.length
+//                         });
+//                     }
+//                 } 
+//                 // Handle single media (photo or video)
+//                 else {
+//                     let mediaUrl = null;
+//                     let isPhoto = false;
+
+//                     if (info?.urls) {
+//                         mediaUrl = info.urls;
+//                         isPhoto = info.isPhoto || false;
+//                     }
+
+//                     if (!mediaUrl) {
+//                         posted.push({ input: rawUrl, ok: false, error: info?.error || 'no_media' });
+//                         continue;
+//                     }
+
+//                     const title = message && typeof message === 'string' && message.length 
+//                         ? message 
+//                         : `Instagram ${shortcode || shareId || 'media'}`;
+
+//                     const embed = new EmbedBuilder()
+//                         .setTitle(title)
+//                         .setURL(`https://www.instagram.com/p/${shortcode || shareId}/`)
+//                         .setTimestamp();
+
+//                     if (isPhoto) {
+//                         embed.setImage(mediaUrl);
+//                     } else {
+//                         // For videos, we might not have a thumbnail in single media case
+//                         // Just send the video URL
+//                     }
+
+//                     const content = !isPhoto ? mediaUrl : (message && message.length ? message : undefined);
+
+//                     await channel.send({ 
+//                         content: content, 
+//                         embeds: [embed] 
+//                     });
+
+//                     posted.push({ 
+//                         input: rawUrl, 
+//                         ok: true, 
+//                         url: mediaUrl, 
+//                         type: isPhoto ? 'photo' : 'video' 
+//                     });
+//                 }
+//             } catch (e) {
+//                 posted.push({ 
+//                     input: rawUrl, 
+//                     ok: false, 
+//                     error: e && e.message ? e.message : String(e) 
+//                 });
+//             }
+//         }
+
+//         res.json({ success: true, posted });
+//     } catch (error) {
+//         console.error('Error in /api/post-instagram:', error);
+//         res.status(500).json({ 
+//             success: false, 
+//             error: error && error.message ? error.message : String(error) 
+//         });
+//     }
+// });
+
+// Convert Instagram URLs/shortcodes and post masked links to Discord channel
+// app.post('/api/post-instagram', express.json(), async (req, res) => {
+//     try {
+//         const { urls, message, embedOnly } = req.body || {};
+//         const channelId = (req.body && req.body.channelId) || channelConfig.channelId;
+
+//         if (!channelId) return res.status(400).json({ success: false, error: 'Channel not configured' });
+
+//         const channel = client.channels.cache.get(channelId);
+//         if (!channel) return res.status(404).json({ success: false, error: 'Channel not found' });
+
+//         if (!urls || !Array.isArray(urls) || urls.length === 0) {
+//             return res.status(400).json({ success: false, error: 'No URLs provided' });
+//         }
+
+//         // Use the existing test runner script to resolve media URLs.
+//         const { execFile } = require('child_process');
+//         const runInstaScript = (shortcode) => new Promise((resolve, reject) => {
+//             const relScriptPath = path.join('scripts', 'test-insta-run.mjs');
+//             execFile(process.execPath, [relScriptPath, shortcode], { 
+//                 windowsHide: true, 
+//                 maxBuffer: 1024 * 1024 * 5, 
+//                 cwd: __dirname 
+//             }, (err, stdout, stderr) => {
+//                 if (err) return reject({ err, stdout, stderr });
+//                 const out = String(stdout || '').trim();
+//                 const marker = 'RESULT:';
+//                 const idx = out.indexOf(marker);
+//                 if (idx === -1) {
+//                     return reject(new Error('Unexpected script output: ' + out + ' ' + String(stderr || '')));
+//                 }
+//                 const jsonPart = out.slice(idx + marker.length).trim();
+//                 try {
+//                     const parsed = JSON.parse(jsonPart);
+//                     resolve(parsed);
+//                 } catch (e) {
+//                     return reject(new Error('Failed to parse JSON from script output: ' + e.message + ' -- ' + jsonPart));
+//                 }
+//             });
+//         });
+
+//         // Helper function to fetch Instagram post caption
+//         const fetchCaption = async (shortcode) => {
+//             try {
+//                 const url = `https://www.instagram.com/p/${shortcode}/`;
+//                 const response = await fetch(url, {
+//                     headers: {
+//                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+//                     }
+//                 });
+//                 const html = await response.text();
+                
+//                 // Try og:description meta tag
+//                 let match = html.match(/<meta property="og:description" content="([^"]*?)"\s*\/>/i);
+//                 if (match && match[1]) {
+//                     const caption = match[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+//                     console.log('📝 Instagram Caption:', caption);
+//                     return caption;
+//                 }
+                
+//                 // Try regular description meta tag
+//                 match = html.match(/<meta name="description" content="([^"]*?)"\s*\/>/i);
+//                 if (match && match[1]) {
+//                     const caption = match[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+//                     console.log('📝 Instagram Caption:', caption);
+//                     return caption;
+//                 }
+                
+//                 console.log('⚠️ No caption found for shortcode:', shortcode);
+//                 return null;
+//             } catch (e) {
+//                 console.error('❌ Error fetching caption:', e.message);
+//                 return null;
+//             }
+//         };
+
+//         const posted = [];
+
+//         for (const rawUrl of urls) {
+//             try {
+//                 if (!rawUrl || typeof rawUrl !== 'string') continue;
+                
+//                 // Extract shortcode or shareId
+//                 let shortcode = null;
+//                 let shareId = null;
+//                 try {
+//                     const u = new URL(rawUrl);
+//                     const parts = u.pathname.split('/').filter(Boolean);
+//                     if (parts.length >= 2) {
+//                         if (parts[0] === 'p' || parts[0] === 'reel' || parts[0] === 'tv') shortcode = parts[1];
+//                         if (parts[0] === 'share') shareId = parts[1];
+//                     }
+//                 } catch (e) {
+//                     const s = rawUrl.trim();
+//                     if (/^[A-Za-z0-9_-]{5,}$/.test(s)) shortcode = s;
+//                 }
+
+//                 let info = null;
+//                 if (shareId) {
+//                     info = await runInstaScript(shareId).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+//                 } else if (shortcode) {
+//                     info = await runInstaScript(shortcode).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+//                 } else {
+//                     const resolved = await resolveRedirectingURL(rawUrl);
+//                     const id = resolved.postId || resolved.shareId;
+//                     if (id) info = await runInstaScript(id).catch(e=>({ error: String(e && e.message ? e.message : e) }));
+//                     else info = { error: 'could not-resolve-id' };
+//                 }
+
+//                 // Fetch the Instagram post caption/title
+//                 const postCaption = shortcode ? await fetchCaption(shortcode) : null;
+//                 const postTitle = postCaption || (message && typeof message === 'string' && message.length ? message : null);
+                
+//                 console.log('🔍 Processing URL:', rawUrl);
+//                 console.log('🆔 Shortcode:', shortcode || shareId);
+//                 console.log('📋 Post Info:', JSON.stringify(info, null, 2));
+
+//                 // Handle carousel posts (multiple images/videos)
+//                 if (info?.picker && Array.isArray(info.picker) && info.picker.length > 0) {
+//                     console.log(`📸 Carousel detected with ${info.picker.length} items`);
+                    
+//                     // Post each item from the carousel separately
+//                     for (let i = 0; i < info.picker.length; i++) {
+//                         const item = info.picker[i];
+//                         if (!item || !item.url) continue;
+
+//                         const isPhoto = item.type === 'photo';
+                        
+//                         // Use fetched caption as title, with numbering for multiple items
+//                         const itemTitle = postTitle 
+//                             ? `${postTitle}${info.picker.length > 1 ? ` (${i + 1}/${info.picker.length})` : ''}` 
+//                             : `Instagram ${shortcode || shareId || 'media'}${info.picker.length > 1 ? ` (${i + 1}/${info.picker.length})` : ''}`;
+
+//                         console.log(`  ➡️ Item ${i + 1}/${info.picker.length}: ${item.type} - ${itemTitle}`);
+
+//                         const embed = new EmbedBuilder()
+//                             .setTitle(itemTitle.slice(0, 256)) // Discord title limit
+//                             .setURL(`https://www.instagram.com/p/${shortcode || shareId}/`)
+//                             .setTimestamp();
+
+//                         if (isPhoto) {
+//                             embed.setImage(item.url);
+//                         } else {
+//                             // For videos, set thumbnail if available
+//                             if (item.thumb) {
+//                                 embed.setImage(item.thumb);
+//                             }
+//                         }
+
+//                         // For videos, include the video URL in the content
+//                         const content = !isPhoto ? item.url : (i === 0 && message && message.length ? message : undefined);
+
+//                         await channel.send({ 
+//                             content: content, 
+//                             embeds: [embed] 
+//                         });
+
+//                         console.log(`  ✅ Posted item ${i + 1}/${info.picker.length}`);
+
+//                         posted.push({ 
+//                             input: rawUrl, 
+//                             ok: true, 
+//                             url: item.url, 
+//                             type: item.type,
+//                             index: i + 1,
+//                             total: info.picker.length,
+//                             title: itemTitle
+//                         });
+//                     }
+//                 } 
+//                 // Handle single media (photo or video)
+//                 else {
+//                     console.log('📷 Single media detected');
+                    
+//                     let mediaUrl = null;
+//                     let isPhoto = false;
+
+//                     if (info?.urls) {
+//                         mediaUrl = info.urls;
+//                         isPhoto = info.isPhoto || false;
+//                     }
+
+//                     if (!mediaUrl) {
+//                         console.log('❌ No media URL found');
+//                         posted.push({ input: rawUrl, ok: false, error: info?.error || 'no_media' });
+//                         continue;
+//                     }
+
+//                     const title = postTitle || `Instagram ${shortcode || shareId || 'media'}`;
+//                     console.log(`  ➡️ Single ${isPhoto ? 'photo' : 'video'}: ${title}`);
+
+//                     const embed = new EmbedBuilder()
+//                         .setTitle(title.slice(0, 256)) // Discord title limit
+//                         .setURL(`https://www.instagram.com/p/${shortcode || shareId}/`)
+//                         .setTimestamp();
+
+//                     if (isPhoto) {
+//                         embed.setImage(mediaUrl);
+//                     } else {
+//                         // For videos, we might not have a thumbnail in single media case
+//                         // Just send the video URL
+//                     }
+
+//                     const content = !isPhoto ? mediaUrl : (message && message.length ? message : undefined);
+
+//                     await channel.send({ 
+//                         content: content, 
+//                         embeds: [embed] 
+//                     });
+
+//                     console.log('  ✅ Posted single media',);
+
+//                     posted.push({ 
+//                         input: rawUrl, 
+//                         ok: true, 
+//                         url: mediaUrl, 
+//                         type: isPhoto ? 'photo' : 'video',
+//                         title: title
+//                     });
+//                 }
+//             } catch (e) {
+//                 console.error('❌ Error processing URL:', rawUrl, e);
+//                 posted.push({ 
+//                     input: rawUrl, 
+//                     ok: false, 
+//                     error: e && e.message ? e.message : String(e) 
+//                 });
+//             }
+//         }
+
+//         console.log('🎉 Finished processing all URLs');
+//         console.log('📊 Results:', JSON.stringify(posted, null, 2));
+        
+//         res.json({ success: true, posted });
+//     } catch (error) {
+//         console.error('💥 Fatal error in /api/post-instagram:', error);
+//         res.status(500).json({ 
+//             success: false, 
+//             error: error && error.message ? error.message : String(error) 
+//         });
+//     }
+// });
+
+
+// Convert Instagram URLs/shortcodes and post masked links to Discord channel
 app.post('/api/post-instagram', express.json(), async (req, res) => {
     try {
         const { urls, message, embedOnly } = req.body || {};
@@ -329,14 +769,15 @@ app.post('/api/post-instagram', express.json(), async (req, res) => {
         }
 
         // Use the existing test runner script to resolve media URLs.
-        // It prints JSON prefixed with "RESULT: ". We'll run it via node for each shortcode.
         const { execFile } = require('child_process');
         const runInstaScript = (shortcode) => new Promise((resolve, reject) => {
-            // Run the script from the project directory using a relative script path so ESM loader resolves relative imports correctly on Windows.
             const relScriptPath = path.join('scripts', 'test-insta-run.mjs');
-            execFile(process.execPath, [relScriptPath, shortcode], { windowsHide: true, maxBuffer: 1024 * 1024 * 5, cwd: __dirname }, (err, stdout, stderr) => {
+            execFile(process.execPath, [relScriptPath, shortcode], { 
+                windowsHide: true, 
+                maxBuffer: 1024 * 1024 * 5, 
+                cwd: __dirname 
+            }, (err, stdout, stderr) => {
                 if (err) return reject({ err, stdout, stderr });
-                // script prints: RESULT: {...}\n
                 const out = String(stdout || '').trim();
                 const marker = 'RESULT:';
                 const idx = out.indexOf(marker);
@@ -353,75 +794,259 @@ app.post('/api/post-instagram', express.json(), async (req, res) => {
             });
         });
 
+        // Helper function to fetch Instagram post caption and creator info
+        const fetchInstagramData = async (shortcode) => {
+            try {
+                const url = `https://www.instagram.com/p/${shortcode}/`;
+                const response = await fetch(url, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                });
+                const html = await response.text();
+                
+                const result = {
+                    caption: null,
+                    username: null,
+                    fullName: null
+                };
+                
+                // Extract caption from og:description or meta description
+                let match = html.match(/<meta property="og:description" content="([^"]*?)"\s*\/>/i);
+                if (match && match[1]) {
+                    result.caption = match[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+                } else {
+                    match = html.match(/<meta name="description" content="([^"]*?)"\s*\/>/i);
+                    if (match && match[1]) {
+                        result.caption = match[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+                    }
+                }
+                
+                // Extract username from og:title or title tag
+                // Format is usually: "Username on Instagram: "Caption text""
+                match = html.match(/<meta property="og:title" content="([^"]*?)"/i);
+                if (match && match[1]) {
+                    const titleContent = match[1];
+                    // Try to extract username from "Username on Instagram" format
+                    const usernameMatch = titleContent.match(/^(.+?)\s+(?:on Instagram|@)/i);
+                    if (usernameMatch && usernameMatch[1]) {
+                        result.fullName = usernameMatch[1].trim();
+                    }
+                }
+                
+                // Try to extract username from URL pattern or JSON data
+                match = html.match(/"username":"([^"]+)"/);
+                if (match && match[1]) {
+                    result.username = match[1];
+                }
+                
+                // Alternative: extract from alternateName in JSON-LD
+                match = html.match(/"alternateName":"@([^"]+)"/);
+                if (match && match[1] && !result.username) {
+                    result.username = match[1];
+                }
+                
+                // Extract from owner username in shared data
+                match = html.match(/"owner":\{"username":"([^"]+)"/);
+                if (match && match[1] && !result.username) {
+                    result.username = match[1];
+                }
+                
+                console.log('📝 Instagram Caption:', result.caption || 'None');
+                console.log('👤 Creator Username:', result.username || 'Unknown');
+                console.log('✨ Creator Name:', result.fullName || 'Unknown');
+                
+                return result;
+            } catch (e) {
+                console.error('❌ Error fetching Instagram data:', e.message);
+                return { caption: null, username: null, fullName: null };
+            }
+        };
+
         const posted = [];
 
         for (const rawUrl of urls) {
             try {
                 if (!rawUrl || typeof rawUrl !== 'string') continue;
-                // try to extract shortcode or shareId
+                
+                // Extract shortcode or shareId
                 let shortcode = null;
                 let shareId = null;
                 try {
                     const u = new URL(rawUrl);
                     const parts = u.pathname.split('/').filter(Boolean);
-                    // common forms: /p/{id}/, /reel/{id}/, /share/{id}/
                     if (parts.length >= 2) {
                         if (parts[0] === 'p' || parts[0] === 'reel' || parts[0] === 'tv') shortcode = parts[1];
                         if (parts[0] === 'share') shareId = parts[1];
                     }
                 } catch (e) {
-                    // not a valid URL; maybe user provided shortcode directly
                     const s = rawUrl.trim();
                     if (/^[A-Za-z0-9_-]{5,}$/.test(s)) shortcode = s;
                 }
 
                 let info = null;
                 if (shareId) {
-                    // shareId -> try resolving via script by passing shareId
                     info = await runInstaScript(shareId).catch(e=>({ error: String(e && e.message ? e.message : e) }));
                 } else if (shortcode) {
                     info = await runInstaScript(shortcode).catch(e=>({ error: String(e && e.message ? e.message : e) }));
                 } else {
-                    // try to resolve by attempting to extract shortcode via redirect resolution
                     const resolved = await resolveRedirectingURL(rawUrl);
                     const id = resolved.postId || resolved.shareId;
                     if (id) info = await runInstaScript(id).catch(e=>({ error: String(e && e.message ? e.message : e) }));
                     else info = { error: 'could not-resolve-id' };
                 }
 
-                // extract a usable media URL
-                let mediaUrl = null;
-                let isPhoto = false;
-                if (info?.urls) mediaUrl = info.urls;
-                else if (info?.picker && Array.isArray(info.picker) && info.picker.length) mediaUrl = info.picker[0].url;
-                else if (info?.isPhoto && info?.urls) { mediaUrl = info.urls; isPhoto = true; }
+                // Fetch the Instagram post caption/title and creator info
+                const instagramData = shortcode ? await fetchInstagramData(shortcode) : { caption: null, username: null, fullName: null };
+                const postCaption = instagramData.caption || (message && typeof message === 'string' && message.length ? message : null);
+                const creatorUsername = instagramData.username;
+                const creatorName = instagramData.fullName;
+                
+                console.log('🔍 Processing URL:', rawUrl);
+                console.log('🆔 Shortcode:', shortcode || shareId);
+                if (creatorUsername) console.log('👤 By: @' + creatorUsername + (creatorName ? ` (${creatorName})` : ''));
+                console.log('📋 Post Info:', JSON.stringify(info, null, 2));
 
-                if (!mediaUrl) {
-                    // skip if no media
-                    posted.push({ input: rawUrl, ok: false, error: info?.error || 'no_media' });
-                    continue;
+                // Handle carousel posts (multiple images/videos)
+                if (info?.picker && Array.isArray(info.picker) && info.picker.length > 0) {
+                    console.log(`📸 Carousel detected with ${info.picker.length} items`);
+                    
+                    // Post each item from the carousel separately
+                    for (let i = 0; i < info.picker.length; i++) {
+                        const item = info.picker[i];
+                        if (!item || !item.url) continue;
+
+                        const isPhoto = item.type === 'photo';
+                        
+                        // Use fetched caption as title, with numbering for multiple items
+                        const itemTitle = postCaption 
+                            ? `${postCaption}${info.picker.length > 1 ? ` (${i + 1}/${info.picker.length})` : ''}` 
+                            : `Instagram ${shortcode || shareId || 'media'}${info.picker.length > 1 ? ` (${i + 1}/${info.picker.length})` : ''}`;
+
+                        console.log(`  ➡️ Item ${i + 1}/${info.picker.length}: ${item.type} - ${itemTitle}`);
+
+                        const embed = new EmbedBuilder()
+                            .setTitle(itemTitle.slice(0, 256)) // Discord title limit
+                            .setURL(`https://www.instagram.com/p/${shortcode || shareId}/`)
+                            .setTimestamp();
+                        
+                        // Add creator info as footer
+                        if (creatorUsername) {
+                            embed.setFooter({ 
+                                text: `Posted by @${creatorUsername}${creatorName ? ` (${creatorName})` : ''}` 
+                            });
+                        }
+
+                        if (isPhoto) {
+                            embed.setImage(item.url);
+                        } else {
+                            // For videos, set thumbnail if available
+                            if (item.thumb) {
+                                embed.setImage(item.thumb);
+                            }
+                        }
+
+                        // For videos, include the video URL in the content
+                        const content = !isPhoto ? item.url : (i === 0 && message && message.length ? message : undefined);
+
+                        await channel.send({ 
+                            content: content, 
+                            embeds: [embed] 
+                        });
+
+                        console.log(`  ✅ Posted item ${i + 1}/${info.picker.length}`);
+
+                        posted.push({ 
+                            input: rawUrl, 
+                            ok: true, 
+                            url: item.url, 
+                            type: item.type,
+                            index: i + 1,
+                            total: info.picker.length,
+                            title: itemTitle,
+                            creator: creatorUsername,
+                            creatorName: creatorName
+                        });
+                    }
+                } 
+                // Handle single media (photo or video)
+                else {
+                    console.log('📷 Single media detected');
+                    
+                    let mediaUrl = null;
+                    let isPhoto = false;
+
+                    if (info?.urls) {
+                        mediaUrl = info.urls;
+                        isPhoto = info.isPhoto || false;
+                    }
+
+                    if (!mediaUrl) {
+                        console.log('❌ No media URL found');
+                        posted.push({ input: rawUrl, ok: false, error: info?.error || 'no_media' });
+                        continue;
+                    }
+
+                    const title = postCaption || `Instagram ${shortcode || shareId || 'media'}`;
+                    console.log(`  ➡️ Single ${isPhoto ? 'photo' : 'video'}: ${title}`);
+
+                    const embed = new EmbedBuilder()
+                        .setTitle(title.slice(0, 256)) // Discord title limit
+                        .setURL(`https://www.instagram.com/p/${shortcode || shareId}/`)
+                        .setTimestamp();
+                    
+                    // Add creator info as footer
+                    if (creatorUsername) {
+                        embed.setFooter({ 
+                            text: `Posted by @${creatorUsername}${creatorName ? ` (${creatorName})` : ''}` 
+                        });
+                    }
+
+                    if (isPhoto) {
+                        embed.setImage(mediaUrl);
+                    } else {
+                        // For videos, we might not have a thumbnail in single media case
+                        // Just send the video URL
+                    }
+
+                    const content = !isPhoto ? mediaUrl : (message && message.length ? message : undefined);
+
+                    await channel.send({ 
+                        content: content, 
+                        embeds: [embed] 
+                    });
+
+                    console.log('  ✅ Posted single media');
+
+                    posted.push({ 
+                        input: rawUrl, 
+                        ok: true, 
+                        url: mediaUrl, 
+                        type: isPhoto ? 'photo' : 'video',
+                        title: title,
+                        creator: creatorUsername,
+                        creatorName: creatorName
+                    });
                 }
-
-                // create a masked embed with a friendly title
-                const title = message && typeof message === 'string' && message.length ? message : `Instagram ${shortcode || shareId || 'media'}`;
-                const embed = new EmbedBuilder()
-                    .setTitle(title)
-                    .setDescription(`[${title}](${mediaUrl})`)
-                    .setURL(mediaUrl)
-                    .setTimestamp();
-
-                if (isPhoto) embed.setImage(mediaUrl);
-
-                await channel.send({ content: message && message.length ? message : undefined, embeds: [embed] });
-                posted.push({ input: rawUrl, ok: true, url: mediaUrl });
             } catch (e) {
-                posted.push({ input: rawUrl, ok: false, error: e && e.message ? e.message : String(e) });
+                console.error('❌ Error processing URL:', rawUrl, e);
+                posted.push({ 
+                    input: rawUrl, 
+                    ok: false, 
+                    error: e && e.message ? e.message : String(e) 
+                });
             }
         }
 
+        console.log('🎉 Finished processing all URLs');
+        console.log('📊 Results:', JSON.stringify(posted, null, 2));
+        
         res.json({ success: true, posted });
     } catch (error) {
-        console.error('Error in /api/post-instagram:', error);
-        res.status(500).json({ success: false, error: error && error.message ? error.message : String(error) });
+        console.error('💥 Fatal error in /api/post-instagram:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error && error.message ? error.message : String(error) 
+        });
     }
 });
